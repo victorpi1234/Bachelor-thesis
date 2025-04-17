@@ -1,0 +1,107 @@
+function [ct, cst] = delete_Cone_mod_Copy(ct, cst, coneBaseRadius, coneHeight, yLocation, baseThickness, boxSize, coneSpacingX_Z, HU, varargin)
+    % [Previous parameter handling code remains the same...]
+    
+    %% Find and remove the modulator structure
+% boxSize in form [20, 130, 30] (how big the base for the modulator is)
+% yLocation : where on the y-axis you want it to be
+
+if ~exist('coneSpacingX_Z','var') || isempty(coneSpacingX_Z)
+    coneSpacingX_Z = [2*coneBaseRadius 2*coneBaseRadius];
+end
+if ~exist('boxSize','var') || isempty(boxSize)
+    boxSize = [20, 130, 30];
+end
+
+
+if nargin < 3 || isempty(coneBaseRadius)
+    coneBaseRadius = 5;
+end
+if nargin < 4 || isempty(coneHeight)
+    coneHeight = 30;
+end
+% if nargin < 5 || isempty(boxSize)
+%     boxSize = [20, 130, 30];
+% end
+if nargin < 5 || isempty(yLocation)
+    yLocation = 110;
+end
+
+% if nargin < 8 || isempty(HU)
+%     HU = 300;
+% end
+p = inputParser;
+addOptional(p, 'HU', 300);
+% addOptional(p, 'boxSize', [20, 130, 30]);
+%addOptional(p, 'coneHeight', 30);
+parse(p, varargin{:});
+HU = p.Results.HU;
+% boxSize = p.Results.boxSize;
+disp('Cone_modulator function called');
+
+
+coneSpacingX = coneSpacingX_Z(1); 
+coneSpacingZ = coneSpacingX_Z(2);
+    
+    %% Create mask of voxels to remove (same logic as creation but inverted)
+    % Get all voxels currently in the modulator
+    modulatorVoxels = cst{ixModulator,4}{1};
+
+    center = round([ct.cubeDim./2]);
+    Modulator_center = [(center(1) - yLocation), center(2), center(3)];
+    halfSize = boxSize / 2;
+    deleteHelper = zeros(ct.cubeDim, 'logical');
+    
+    % Mark base voxels for deletion
+    baseTopY = Modulator_center(1) + baseThickness - 1;
+    if baseTopY > ct.cubeDim(1)
+        baseTopY = ct.cubeDim(1);
+    end
+    
+    for x = 1:ct.cubeDim(2)
+        for y = Modulator_center(1):baseTopY
+            for z = 1:ct.cubeDim(3)
+                if abs(x - Modulator_center(2)) <= halfSize(2) && ...
+                   abs(z - Modulator_center(3)) <= halfSize(3)
+                    deleteHelper(y,x,z) = true;
+                end
+            end
+        end
+    end
+    
+    % Mark cone voxels for deletion
+    for x = Modulator_center(2) - halfSize(2):coneSpacingX:Modulator_center(2) + halfSize(2)
+        for z = Modulator_center(3) - halfSize(3):coneSpacingZ:Modulator_center(3) + halfSize(3)
+            for y = Modulator_center(1)-1:-1:Modulator_center(1) - coneHeight
+                currentRadius = coneBaseRadius * (1 - (Modulator_center(1) - y) / coneHeight);
+                for dx = -ceil(currentRadius):ceil(currentRadius)
+                    for dz = -ceil(currentRadius):ceil(currentRadius)
+                        if dx^2 + dz^2 <= currentRadius^2
+                            voxelX = x + dx;
+                            voxelY = y;
+                            voxelZ = z + dz;
+                            if voxelX >= 1 && voxelX <= ct.cubeDim(2) && ...
+                               voxelY >= 1 && voxelY <= ct.cubeDim(1) && ...
+                               voxelZ >= 1 && voxelZ <= ct.cubeDim(3)
+                                deleteHelper(voxelY, voxelX, voxelZ) = true;
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    %% Apply deletions
+    % 1. Remove marked voxels from modulator structure
+    voxelsToKeep = setdiff(modulatorVoxels, find(deleteHelper));
+    cst{ixModulator,4}{1} = voxelsToKeep;
+    
+    % 2. Reset HU values for deleted voxels
+    ct.cubeHU{1}(deleteHelper) = HU;  % Set to specified HU (typically -1000 for air)
+    
+    % 3. Optional: Completely remove modulator structure if empty
+    if isempty(voxelsToKeep)
+        cst(ixModulator,:) = [];
+        ct.structureColor(ixModulator,:) = [];
+    end
+end

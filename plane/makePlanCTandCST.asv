@@ -1,0 +1,135 @@
+function [ct, cst, ct_no_mod, cst_no_mod] = makePlanCTandCST(xDim, yDim, zDim, res)
+    disp('makePlanCTandCST function called!');
+    %% Create CT image series
+    ct.cubeDim = [yDim xDim zDim]; % second cube dimension represents the x-coordinate
+    ct.resolution.x = res;
+    ct.resolution.y = res;
+    ct.resolution.z = res;
+    ct.numOfCtScen = 1;
+    
+    %% Create a CT image series with zeros - it will be filled later
+    ct.cubeHU{1} = ones(ct.cubeDim) * -1000; % assign HU of Air
+    
+    % Create the VOI data for the phantom
+    % Define structure indices
+    ixTissue = 1;
+    ixPTV = 2;
+    ixOAR = 3;
+    ixModulator = 4;
+    
+    % Initialize cst cell array
+    cst = cell(4,6);
+    
+    % Define general VOI properties
+    cst{ixTissue,1} = 0;
+    cst{ixTissue,2} = 'tissue';
+    cst{ixTissue,3} = 'IGNORED';
+    
+    cst{ixPTV,1} = 1;
+    cst{ixPTV,2} = 'PTV';
+    cst{ixPTV,3} = 'TARGET';
+    
+    cst{ixOAR,1} = 2;
+    cst{ixOAR,2} = 'OAR';
+    cst{ixOAR,3} = 'OAR';
+    
+    % Define optimization parameters
+    cst{ixTissue,5}.TissueClass = 1;
+    cst{ixTissue,5}.alphaX = 0.1000;
+    cst{ixTissue,5}.betaX = 0.0500;
+    cst{ixTissue,5}.Priority = 2;
+    cst{ixTissue,5}.Visible = 1;
+    cst{ixTissue,5}.visibleColor = [0 0 0];
+    cst{ixTissue,5}.sfudOptimization = 0;
+    
+    cst{ixPTV,5}.TissueClass = 1;
+    cst{ixPTV,5}.alphaX = 0.1000;
+    cst{ixPTV,5}.betaX = 0.0500;
+    cst{ixPTV,5}.Priority = 1;
+    cst{ixPTV,5}.Visible = 1;
+    cst{ixPTV,5}.visibleColor = [1 0 1];
+    cst{ixPTV,5}.sfudOptimization = 0;
+    
+    cst{ixOAR,5}.TissueClass = 1;
+    cst{ixOAR,5}.alphaX = 0.1000;
+    cst{ixOAR,5}.betaX = 0.0500;
+    cst{ixOAR,5}.Priority = 1;
+    cst{ixOAR,5}.Visible = 1;
+    cst{ixOAR,5}.visibleColor = [1 1 0];
+    cst{ixOAR,5}.sfudOptimization = 0;
+    
+    % Define objective
+    cst{ixPTV,6}{1} = struct(DoseObjectives.matRad_SquaredDeviation(5*10^3,11.6));
+    
+    %% Create spherical structures
+    cubeHelper = zeros(ct.cubeDim);
+    radiusTissue = xDim;
+    center = round([ct.cubeDim./2]);
+    
+    % Create tissue volume
+    for x = 1:xDim
+        for y = 1:yDim
+            for z = 1:zDim
+                currPost = [y x z] - center;
+                if sqrt(sum(currPost.^2)) <= radiusTissue
+                    cubeHelper(y,x,z) = 1;
+                end
+            end
+        end
+    end
+    cst{ixTissue,4}{1} = find(cubeHelper);
+    
+    % Create PTV
+    cubeHelper1 = zeros(ct.cubeDim);
+    RadiusPTV = 40;
+    for x = 1:xDim
+        for y = 1:yDim
+            for z = 1:zDim
+                currPost = [y x z] - center;
+                if sqrt(sum(currPost.^2)) <= RadiusPTV
+                    cubeHelper1(y,x,z) = 1;
+                end
+            end
+        end
+    end
+    cst{ixPTV,4}{1} = find(cubeHelper1);
+    
+    % Create OAR
+    cubeHelper2 = zeros(ct.cubeDim);
+    RadiusOAR = 15;
+    OAR_center = [(center(1)-RadiusPTV-RadiusOAR-20.0) center(2) center(3)];
+    for x = 1:xDim
+        for y = 1:yDim
+            for z = 1:zDim
+                currPost = [y x z] - OAR_center;
+                if sqrt(sum(currPost.^2)) <= RadiusOAR
+                    cubeHelper2(y,x,z) = 1;
+                end
+            end
+        end
+    end
+    cst{ixOAR,4}{1} = find(cubeHelper2);
+    
+    % Assign HU values
+    ct.cubeHU{1}(cst{ixTissue,4}{1}) = 0;
+    ct.cubeHU{1}(cst{ixPTV,4}{1}) = 0;
+    ct.cubeHU{1}(cst{ixOAR,4}{1}) = 0;
+    
+    %% Create copies without modulator
+    ct_no_mod = ct;
+    cst_no_mod = cst;
+    
+    %% Add modulator to original cst
+    cst{ixModulator,1} = 1;
+    cst{ixModulator,2} = 'modulator';
+    cst{ixModulator,3} = 'EXTERNAL';
+    
+    cst{ixModulator,5}.TissueClass = 1;
+    cst{ixModulator,5}.alphaX = 0.1000;
+    cst{ixModulator,5}.betaX = 0.0500;
+    cst{ixModulator,5}.Priority = 2;
+    cst{ixModulator,5}.Visible = 1;
+    cst{ixModulator,5}.visibleColor = [0 1 1];
+    cst{ixModulator,5}.sfudOptimization = 0;
+    ct.structureColor(ixModulator, :) = [0 1 1];
+end
