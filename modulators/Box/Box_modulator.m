@@ -1,11 +1,42 @@
 function [ct, cst] = Box_modulator(ct, cst, boxSize, yLocation, removal_lenght, removal_spacing , tooth_height, HU , startpixel, varargin)
-% boxSize in form [20, 130, 30] (how big the base for the modulator is)
 % yLocation : where on the y-axis you want it to be (use 110 for example)
 
+% This function inserts a box-shaped range modulator into the CT volume.
+% The modulator is customizable with regular "teeth" removed in a grid pattern.
+%
+% Parameters:
+%   - ct: CT structure (input and output)
+%   - cst: CST structure (input and output)
+%   - boxSize: [y, x, z] size of the modulator box (default: [20, 130, 30])
+%   - yLocation: y-axis position to place the center of the box (e.g., 110, default: 0)
+%   - removal_lenght: [x, z] size of each "tooth" to be removed (default: [2 2])
+%   - removal_spacing: [x, z] spacing between teeth (default: 2 * removal_lenght)
+%   - tooth_height: vertical height of the removed teeth (default: half of box height)
+%   - HU: Hounsfield Unit value to assign to the modulator material (default: 132, PMMA material)
+%   - startpixel: [x, z] starting offset for teeth removal (default: same as removal_lenght)
+%
+% Notes:
+%   - The modulator is placed relative to the center of the CT volume.
+%   - Removal patterns are alternating holes in both x and z directions.
+%   - Only even values for boxSize are allowed (to ensure symmetry).
+%   - The modulator is added as a new structure in `cst` and as modified HU values in `ct`.
+%
+% Example:
+%   boxSize = [20, 130, 30];
+%   yLocation = 110;
+%   removal_lenght = [2 2];
+%   removal_spacing = [4 4];
+%   tooth_height = 10;
+%   HU = 132;
+%   startpixel = [2 2];
+%   [ct, cst] = Box_modulator(ct, cst, boxSize, yLocation, removal_lenght, removal_spacing, tooth_height, HU, startpixel);
 
 
 if ~exist('boxSize','var') || isempty(boxSize)
     boxSize = [20, 130, 30];
+end
+if ~exist('yLocation','var') || isempty(yLocation)
+    yLocation = 0;
 end
 if ~exist('removal_lenght','var') || isempty(removal_lenght)
     removal_lenght = [2 2];
