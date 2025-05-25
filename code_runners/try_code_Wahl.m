@@ -1,0 +1,75 @@
+%%
+clear all
+close all
+clc 
+%% set matRad configuration
+addpath(genpath('C:\Users\victo\bachelor_thesis\dkfz\matRad-dev'));
+matRad_rc;  
+%%
+addpath(genpath('C:\Users\victo\bachelor_thesis\dkfz\MymatRad\Project'));
+
+%% Make CT, CST
+
+ct_no_mod = makeCT(800,300,300, 0.25);
+[ct_no_mod, cst_no_mod] = makeCST_water(ct_no_mod, 120, 20, [-200 0 0], [],[],[],-10);
+
+%% Cone Modulator
+clearvars ct cst % ct_no_mod cst_no_mod
+[ct,cst] = new_PTV_shaped_coned_inverse_good(ct_no_mod,cst_no_mod,15, 150,5,320,11, 11,600,[],[1 1 1]); % Cone modulator; HU= 132 for PMMA
+% [ct,cst] = Cones_shaped_like_PTV(ct_no_mod,cst_no_mod,3, 150,5,150,11, 11,600,[],[1 1 1]);
+
+%% Box Modulator
+clearvars ct cst % ct_no_mod cst_no_mod
+[ct,cst] = Box_modulator(ct_no_mod,cst_no_mod, [20 100 50], 70, [3 3],[6 0],7,132); % Box modulator
+
+%% create pln
+pln = specific_pln_maker(ct, cst, 1);
+pln.propDoseCalc.engine =    'MCsquare'; %HongPB
+%% stf
+stf = calc_STF_Single_Energy_Layer_Beam(ct, cst, pln);
+% stf = STF_Specific_Single_Energy_Layer(ct, cst, pln);
+%% Calculation without optimization
+w = 10^4*ones(stf.totalNumOfBixels,1);
+resultGUI = matRad_calcDoseForward(ct,cst,stf,pln,w);
+% resultGUI_no_mod = matRad_calcDoseForward(ct_no_mod,cst_no_mod, stf, pln, w);
+
+%% Data analysis 
+title_text = "Cone Modulator pixel size 0.25, tooth lenght 320px, tooth width 3px";
+slice = matRad_world2cubeIndex(pln.propStf.isoCenter(1,:),ct);
+data_analysis_one_Dose(ct, cst, resultGUI, pln, title_text, slice(3)-6, "on", [0 60]);
+%% Bragg peak N_of_pics -number of pictures pictures
+ixProfileX = matRad_world2cubeIndex(pln.propStf.isoCenter(1,:),ct);
+ixProfileX = ixProfileX(1)-8:ixProfileX(1)+1;
+ixProfileY = matRad_world2cubeIndex(pln.propStf.isoCenter(1,:),ct);
+N_of_pics = 0;
+for ixProfileY = ixProfileY(2):ixProfileY(2) + N_of_pics
+    slice = matRad_world2cubeIndex(pln.propStf.isoCenter(1,:),ct);
+    slice = slice(3);
+    %ixProfileY = 140;
+    profile = resultGUI.physicalDose(ixProfileY,:,slice);
+    % Store both profiles for comparison
+    
+    figure,plot(profile,'LineWidth',2),grid on,hold on,
+    plot(profile,'LineWidth',2),legend({'original profile'}),
+    xlabel('mm'),ylabel('Gy(RBE)'),title('profile plot')
+end
+
+%% Data analysis dose comparer
+title_text1 = 'Just range compensator';
+title_text2 = sprintf(['Cone-width=1.25mm Cone-spacing=2.75mm \n Max-cone-height=95mm HU = 600']);
+% title_text = sprintf('Comb Modulator, HU=1527(Aluminum), Tooth size = 4mm \n PTV-radius=40 mm');
+data_analysis_Dose_comparer(ct_comb, cst_comb,ct, cst, resultGUI_comb, resultGUI, pln, title_text1,title_text2, [], slice(3)-2, [],[0 60],[-50 30]);
+%% Save png
+folderpng = 'C:\Users\victo\bachelor_thesis\dkfz\DKFZ_BachelorThesis\Thesis\Pictures\MC_17_05\';
+% saveas(gcf, [folderpng,'Cone_modulator_Difference_Cones_Lenght_80_width_3_HU_600_Z_axis_plus_3.png'])
+saveas(gcf, [folderpng,'Cone_modulator_Cones_Lenght_150px_width_5px_HU_600_axis_centre.png'])
+
+%%
+dvh = matRad_calcDVH(cst, resultGUI.physicalDose);
+% figure;
+% matRad_showDVH(dvh, cst, pln);
+%%
+show_DVH_custom(dvh, cst, pln,'MaxDose',25);
+title('Dose-Volume Histogram (DVH)');
+%%
+matRadGUI
