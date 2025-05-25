@@ -1,4 +1,11 @@
-function [stf] = calc_STF_Single_Energy_Layer_Beam(ct, cst, pln)
+function [stf] = calc_STF_Single_Energy_Layer_Beam(ct, cst, pln, Specific_Energy)
+% Parameters with defaults
+if ~exist('Specific_Energy','var') || isempty(Specific_Energy)
+    % First generate the single bixel stf to get default energy
+    sb_stf = matRad_generateSingleBixelStf(ct,cst,pln);
+    Specific_Energy = sb_stf.ray(1).energy;
+end
+%%
 disp('Result function called!');
 %% Generate Beam Geometry STF
 % pln.propStf.addMargin    = false; %to make smaller stf, les bixel
@@ -37,7 +44,10 @@ stf.ray = rmfield(stf.ray, 'maxMU');
 
 % make energy, rangeShifter and focusIx the same as in sb_stf
 for i = 1:size(stf.ray,2)
-    stf.ray(i).energy = sb_stf.ray(1).energy;
+    stf.ray(i).energy = Specific_Energy; % = sb_stf.ray(1).energy;
+    % stf.ray(i).energy =1.184896818197490e+02;
+    % stf.ray(i).energy =1.054896818197490e+02;
+    % stf.ray(i).energy =90.6576250771507; %pixel = 0.1mm
     stf.ray(i).rangeShifter = sb_stf.ray(1).rangeShifter;
     stf.ray(i).focusIx = sb_stf.ray(1).focusIx;
 end

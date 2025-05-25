@@ -1,4 +1,4 @@
-function [ct, cst] = makeCST_water(ct, RadiusPTV, RadiusOAR, PTV_center, HU_tissue, HU_PTV, HU_OAR, y_offset)
+function [ct, cst] = makeCST_water(ct, RadiusPTV, RadiusOAR, PTV_center, HU_tissue, HU_PTV, HU_OAR, y_offset_water,PTV_Dose)
 disp("makeCST function called!")
 % PTV_center is optional [y x z] position - if not provided, uses center of CT
 
@@ -16,10 +16,12 @@ if ~exist('PTV_center','var') || isempty(PTV_center)
 end
 % RadiusPTV = 40;
 % RadiusOAR = 15;
-if ~exist('y_offset','var') || isempty(y_offset)
-    y_offset = 0;
+if ~exist('y_offset_water','var') || isempty(y_offset_water)
+    y_offset_water = 0;
 end
-
+if ~exist('PTV_Dose','var') || isempty(PTV_Dose)
+    PTV_Dose = 11.6;
+end
 
 % Ensure structures fit in the CT volume
 if 2*RadiusPTV > min(ct.cubeDim)
@@ -68,6 +70,7 @@ cst{ixPTV,5}.Priority    = 1;
 cst{ixPTV,5}.Visible     = 1;
 cst{ixPTV,5}.visibleColor = [1 0 1];
 cst{ixPTV,5}.sfudOptimization=0;
+cst{ixPTV, 6}{1, 1}.parameters{1, 1}  = PTV_Dose;
 
 cst{ixOAR,5}.TissueClass = 1;
 cst{ixOAR,5}.alphaX      = 0.1000;
@@ -147,7 +150,7 @@ for x = 1:ct.cubeDim(2)
 end
 %% Put phantom in water pool
 waterHelper = zeros(ct.cubeDim);
-start_water = round(ct.cubeDim(1)/2) + y_offset;
+start_water = round(ct.cubeDim(1)/2) + y_offset_water;
 % Fill ALL voxels below water level (not just y=water_level)
 for y = 2:ct.cubeDim(1) - 1
     for x = 2:ct.cubeDim(2) - 1

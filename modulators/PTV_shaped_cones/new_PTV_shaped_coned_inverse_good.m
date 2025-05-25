@@ -63,7 +63,7 @@ function [ct, cst] = new_PTV_shaped_coned_inverse_good(ct, cst, modulatorDepth, 
     %% Create PTV cutout from BOTTOM
     cutout_start_vox = round(cutout_start/ct.resolution.y);
     bottom_of_modulator = Modulator_center(1) + halfSize(1);
-    new_y = bottom_of_modulator - cutout_start_vox - (max(ptv_y) - ptv_y);
+    new_y = bottom_of_modulator - cutout_start_vox - (max(ptv_y) - ptv_y) - 1; % -1, in order to not cutout the lowest pixel
     
     valid = new_y >= 1 & new_y <= ct.cubeDim(1) & ...
             new_y >= (Modulator_center(1) - halfSize(1));
@@ -107,19 +107,34 @@ function [ct, cst] = new_PTV_shaped_coned_inverse_good(ct, cst, modulatorDepth, 
     thickness_factor = 1 - (base_thickness - min_thickness)/(max_thickness - min_thickness);
     thickness_factor(isnan(thickness_factor)) = 0;
 
-    %% Create cones with inverse length relationship to base thickness
-    x_positions = Modulator_center(2)-halfSize(2):coneSpacingX:Modulator_center(2)+halfSize(2);
-    z_positions = Modulator_center(3)-halfSize(3):coneSpacingZ:Modulator_center(3)+halfSize(3);
+%% Create cones with inverse length relationship to base thickness
+% x_positions = linspace(Modulator_center(2) - halfSize(2), Modulator_center(2) + halfSize(2), round(2*halfSize(2)/coneSpacingX)+1);
+% z_positions = linspace(Modulator_center(3) - halfSize(3), Modulator_center(3) + halfSize(3), round(2*halfSize(3)/coneSpacingZ)+1);
+
+x_start = Modulator_center(2) - halfSize(2);
+x_end = Modulator_center(2) + halfSize(2);
+z_start = Modulator_center(3) - halfSize(3);
+z_end = Modulator_center(3) + halfSize(3);
+
+x_positions = x_start : coneSpacingX : x_end;
+z_positions = z_start : coneSpacingZ : z_end;
+
     modulatorCones = zeros(ct.cubeDim);
     
     for x_idx = 1:length(x_positions)
         for z_idx = 1:length(z_positions)
             x = round(x_positions(x_idx));
             z = round(z_positions(z_idx));
-            
-            y_base = top_surface(x,z);
-            if y_base == 0, continue; end
-            
+
+            % Clamp to valid range
+            x = max(1, min(x, size(top_surface, 1)));
+            z = max(1, min(z, size(top_surface, 2)));
+
+            y_base = top_surface(x, z);
+            if y_base <= 0
+                continue;
+            end
+
             % Calculate cone length - longer where base is thinner
             if x >= 1 && x <= size(thickness_factor,1) && z >= 1 && z <= size(thickness_factor,2)
                 cone_length = maxConeHeight * thickness_factor(x,z);

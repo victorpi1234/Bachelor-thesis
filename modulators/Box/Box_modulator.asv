@@ -1,23 +1,58 @@
-function [ct, cst] = Box_modulator(ct, cst, boxSize, yLocation, removal_spacing , removal_lenght, tooth_height, HU , startpixel, varargin)
-disp
-% boxSize in form [20, 130, 30] (how big the base for the modulator is)
+function [ct, cst] = Box_modulator(ct, cst, boxSize, yLocation, removal_lenght, removal_spacing , tooth_height, HU , startpixel, varargin)
 % yLocation : where on the y-axis you want it to be (use 110 for example)
 
-if ~exist('removal_spacing','var') || isempty(removal_spacing)
-    removal_spacing = [3 3];
-end
+% This function inserts a box-shaped range modulator into the CT volume.
+% The modulator is customizable with regular "teeth" removed in a grid pattern.
+%
+% Parameters:
+%   - ct: CT structure (input and output)
+%   - cst: CST structure (input and output)
+%   - boxSize: [y, x, z] size of the modulator box (default: [20, 130, 30])
+%   - yLocation: y-axis position to place the center of the box (e.g., 110, default: 0)
+%   - removal_lenght: [x, z] size of each "tooth" to be removed (default: [2 2])
+%   - removal_spacing: [x, z] spacing between teeth (default: 2 * removal_lenght)
+%   - tooth_height: vertical height of the removed teeth (default: half of box height)
+%   - HU: Hounsfield Unit value to assign to the modulator material (default: 132)
+%   - startpixel: [x, z] starting offset for teeth removal (default: same as removal_lenght)
+%
+% Notes:
+%   - The modulator is placed relative to the center of the CT volume.
+%   - Removal patterns are alternating holes in both x and z directions.
+%   - Only even values for boxSize are allowed (to ensure symmetry).
+%   - The modulator is added as a new structure in `cst` and as modified HU values in `ct`.
+%
+% Example:
+%   boxSize = [20, 130, 30];
+%   yLocation = 110;
+%   removal_lenght = [2 2];
+%   removal_spacing = [4 4];
+%   tooth_height = 10;
+%   HU = 132;
+%   startpixel = [2 2];
+%   [ct, cst] = Box_modulator(ct, cst, boxSize, yLocation, removal_lenght, removal_spacing, tooth_height, HU, startpixel);
+
+
+
+
+
 
 if ~exist('boxSize','var') || isempty(boxSize)
     boxSize = [20, 130, 30];
 end
+if ~exist('yLocation','var') || isempty(yLocation)
+    yLocation = 0;
+end
 if ~exist('removal_lenght','var') || isempty(removal_lenght)
     removal_lenght = [2 2];
+end
+if ~exist('removal_spacing','var') || isempty(removal_spacing)
+    removal_spacing = 2*removal_lenght;
 end
 if ~exist('tooth_height','var') || isempty(tooth_height)
     tooth_height = boxSize(1)/2;
 end
 if ~exist('HU','var') || isempty(HU)
-    HU = 300;
+    HU = 132;
 end
 if ~exist('startpixel','var') || isempty(startpixel)
     startpixel = removal_lenght;
@@ -29,6 +64,11 @@ if numel(removal_spacing) ~= 2
 end
 if numel(removal_lenght) ~= 2
     error('removal_lenght must be a 2-element vector [x z]');
+end
+% Warning
+if boxSize(1) < tooth_height
+    warning('Box height (%d) is smaller than tooth height (%d). Adjusting tooth height.', boxSize(1), tooth_height);
+    tooth_height = boxSize(1) / 2;
 end
 
 
@@ -67,18 +107,22 @@ startpixel_z = startpixel(2);
 
 
 disp('Box_modulator function called!');
+%% Error messages
 
-
+if any(mod(boxSize, 2) ~= 0)
+    error('Box_modulator:InvalidInput', 'boxSize must be even in all dimensions. Received [%s].', num2str(boxSize));
+end
 
 %%
 
 % ixModulator = 4;
+
 ixModulator = size(cst, 1) + 1; 
 
 
 
 % define general VOI properties
-cst{ixModulator,1} = 1;
+cst{ixModulator,1} = ixModulator-1;
 cst{ixModulator,2} = 'modulator';
 cst{ixModulator,3} = 'EXTERNAL';
 
@@ -117,14 +161,24 @@ for x = 1:ct.cubeDim(2)
     end
 end
 
-% Remove alternating x-slices but only in **half of the y-axis**
+% Remove alternating x-slices starting from bottom up to tooth_height
 for i = startpixel_x:space_between_removal_x:2*halfSize(2)  % Locate every second slice in x-direction
-    x = Modulator_center(2) - halfSize(2) + i;  % x position from beginning to end of modulator in i increments
+    x = Modulator_center(2) - halfSize(2) + i;  % x position from beginning to end of modulator
     if x > 0 && x <= ct.cubeDim(2) 
-        for y = Modulator_center(1):Modulator_center(1) + tooth_height  % Remove only in the upper half of y
+        % Start from bottom (Modulator_center(1) + halfSize(1)) and go up to tooth_height
+        for y = (Modulator_center(1) + halfSize(1)):-1:(Modulator_center(1) + halfSize(1) - tooth_height)
             for z = 1:ct.cubeDim(3)
                 if abs(z - Modulator_center(3)) <= halfSize(3)
-                    x_range = max(1, floor(x-lenght_of_removal_x/2)):min(ct.cubeDim(2), ceil(x+lenght_of_removal_x/2));  % Removes n pixels before and after; floor and ceil: ensure integers
+                    %x_range = max(1,
+                    %floor(x-lenght_of_removal_x/2)):min(ct.cubeDim(2),
+                    %ceil(x+lenght_of_removal_x/2)); % this inputs bigger
+                    %ranges for very small values
+                    half = floor(lenght_of_removal_x / 2);
+                    if mod(lenght_of_removal_x, 2) == 0  % even
+                        x_range = max(1, x - half + 1):min(ct.cubeDim(2), x + half);
+                    else  % odd
+                        x_range = max(1, x - half):min(ct.cubeDim(2), x + half);
+                    end
                     modulatorHelper(y, x_range, z) = 0; % Remove part of the modulator
                 end
             end
@@ -132,15 +186,15 @@ for i = startpixel_x:space_between_removal_x:2*halfSize(2)  % Locate every secon
     end
 end
 
-% Remove alternating z-slices in half of the y-axis
+% Remove alternating z-slices starting from bottom up to tooth_height
 for i = startpixel_z:space_between_removal_z:2*halfSize(3)  % Locate every second slice in z-direction
-    z = Modulator_center(3) - halfSize(3) + i;  % z position from beginning to end of modulator in i increments
+    z = Modulator_center(3) - halfSize(3) + i;  % z position from beginning to end of modulator
     if z > 0 && z <= ct.cubeDim(3) 
-        for y = Modulator_center(1):Modulator_center(1) + tooth_height  % Remove only in the upper half of y
+        % Start from bottom (Modulator_center(1) + halfSize(1)) and go up to tooth_height
+        for y = (Modulator_center(1) + halfSize(1)):-1:(Modulator_center(1) + halfSize(1) - tooth_height)
             for x = 1:ct.cubeDim(2)
                 if abs(x - Modulator_center(2)) <= halfSize(2)
-                    n = lenght_of_removal_z/2; % How many additional pixels to remove
-                    z_range = max(1, floor(z-lenght_of_removal_z/2)):min(ct.cubeDim(3),ceil(z+lenght_of_removal_z/2));  % Removes n pixels before and after ;floor and ceil: ensure integers
+                    z_range = max(1, floor(z-lenght_of_removal_z/2)):min(ct.cubeDim(3),ceil(z+lenght_of_removal_z/2));
                     modulatorHelper(y, x, z_range) = 0; % Remove part of the modulator
                 end
             end
