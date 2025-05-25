@@ -1,0 +1,87 @@
+% function [ct, cst] = HI_substructure(ct, cst,resultGUI, doseThreshold,structureColor)
+%     if ~exist('structureColor','var') || isempty(structureColor), structureColor = [0 1 0]; end
+%     % Inputs:
+%     %   ct: MatRad CT structure
+%     %   cst: MatRad CST structure
+%     %   resultGUI: MatRad resultGUI (contains dose cube)
+%     %   doseThreshold: Threshold dose (e.g., 5 Gy)
+% 
+%     % Default threshold: 5 Gy
+%     if ~exist('doseThreshold', 'var') || isempty(doseThreshold)
+%         doseThreshold = 5;
+%     end
+% 
+%     %% Find PTV to determine width
+%     ixPTV = find(strcmp(cst(:,2), 'PTV'));
+%     if isempty(ixPTV), error('PTV structure not found in CST'); end
+% 
+%     PTV_voxels = cst{ixPTV,4}{1};
+%     [ptv_y, ptv_x, ptv_z] = ind2sub(ct.cubeDim, PTV_voxels);
+% 
+%     %%
+%     ixHIchecker = size(cst, 1) + 1;
+%     cst{ixHIchecker,1} = ixHIchecker-1;
+%     cst{ixHIchecker,2} = 'HIchecker';
+%     cst{ixHIchecker,3} = 'EXTERNAL';
+%     cst{ixHIchecker,5} = struct('TissueClass',1, 'alphaX',0.1, 'betaX',0.05,...
+%                                'Priority',2, 'Visible',1, 'visibleColor',structureColor,...
+%                                'sfudOptimization',0);
+%     ct.structureColor(ixHIchecker, :) = structureColor;
+%     cst{ixHIchecker,4}{1,1}(1,1) = 4820200;
+%     % Dilate PTV to create outer ring
+%     % outerRingMask = imdilate(ptvMask, strel('sphere',3)) & ~ptvMask;
+%     doseLinear = resultGUI.physicalDose(:);
+%     doseLinear(cst{ixPTV, 4}{1, 1})
+%     find(doseLinear(cst{3, 4}{1, 1})>5)
+% 
+% end
+
+function [ct, cst] = HI_substructure(ct, cst, resultGUI, doseThreshold,structureColor)
+    % Inputs:
+    %   ct: MatRad CT structure
+    %   cst: MatRad CST structure
+    %   resultGUI: MatRad resultGUI (contains dose cube)
+    %   doseThreshold: Threshold dose (e.g., 5 Gy)
+    
+    % Default threshold: 5 Gy
+    if ~exist('doseThreshold', 'var') || isempty(doseThreshold)
+        doseThreshold = 5;
+    end
+
+    % Find PTV index
+    ixPTV = find(strcmp(cst(:,2), 'PTV'));
+    if isempty(ixPTV)
+        error('PTV not found in CST.');
+    end
+    if ~exist('structureColor','var') || isempty(structureColor), structureColor = [0 1 0]; end
+
+    % Get PTV voxels and their doses
+    ptvVoxels = cst{ixPTV, 4}{1};          % Linear indices of PTV
+    dosePTV = resultGUI.physicalDose(ptvVoxels); % Dose to PTV voxels
+    
+    % Find PTV voxels with dose > threshold
+    hotVoxels = ptvVoxels(dosePTV > doseThreshold);
+    
+    % Skip if no voxels exceed threshold
+    if isempty(hotVoxels)
+        warning('No PTV voxels exceed %.2f Gy. Substructure not created.', doseThreshold);
+        return;
+    end
+
+    % Add new substructure to CST
+    ixHotPTV = size(cst, 1) + 1;
+    cst{ixHotPTV, 1} = ixHotPTV - 1;          % ROI number
+    cst{ixHotPTV, 2} = sprintf('PTV_>%dGy', doseThreshold); % Name
+    cst{ixHotPTV, 3} = 'TARGET';              % Type
+    cst{ixHotPTV, 4} = {hotVoxels};           % Voxel indices
+    cst{ixHotPTV, 5} = struct(...
+        'TissueClass', 1, ...
+        'alphaX', 0.1, ...
+        'betaX', 0.05, ...
+        'Priority', 1, ...
+        'Visible', 1, ...
+        'visibleColor', [1 0 0], ... % Red for visibility
+        'sfudOptimization', 0);
+    ct.structureColor(ixHotPTV, :) = structureColor;
+
+end
